@@ -1,0 +1,22 @@
+{
+  "name": "debate-arena",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config app/vite.config.js",
+    "build": "vite build --config app/vite.config.js",
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:genlayer": "genlayer deploy --contract src/debate_arena.py"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0",
+    "vue": "^3.5.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^6.0.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0"
+  }
+}
