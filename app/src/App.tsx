@@ -1,8 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster, toast } from "sonner";
-
-const CONTRACT = "0xB334B44C0C636b9259E10b07132638d7D1a92d7c";
+import { read, write, CONTRACT } from "./genlayer";
 
 const RED = "#F43F5E";
 const BLUE = "#38BDF8";
@@ -33,30 +32,100 @@ const TRANSCRIPT: Turn[] = [
   { round: 3, side: "B", text: "Idealism doesn't onboard your grandmother. Pragmatism wins markets." },
 ];
 
-const ROUND_WINS: Record<Side, number> = { A: 2, B: 1 };
+function toSide(w: any, deb: any): Side | null {
+  if (w == null) return null;
+  const s = String(w).toLowerCase().trim();
+  if (s === "" || s === "none" || s === "null" || s === "undecided" || s === "tie") return null;
+  if (s === "a" || s === "side_a" || s === "0") return "A";
+  if (s === "b" || s === "side_b" || s === "1") return "B";
+  if (deb) {
+    if (String(deb.side_a ?? "").toLowerCase() === s) return "A";
+    if (String(deb.side_b ?? "").toLowerCase() === s) return "B";
+  }
+  return null;
+}
+
+function parseScores(scores: any): Record<Side, number> {
+  if (!scores) return { A: 0, B: 0 };
+  if (Array.isArray(scores)) {
+    let a = 0;
+    let b = 0;
+    for (const r of scores) {
+      const ra = Number((Array.isArray(r) ? r[0] : r?.a ?? r?.A ?? r?.side_a) ?? 0);
+      const rb = Number((Array.isArray(r) ? r[1] : r?.b ?? r?.B ?? r?.side_b) ?? 0);
+      if (ra > rb) a++;
+      else if (rb > ra) b++;
+    }
+    return { A: a, B: b };
+  }
+  if (typeof scores === "object") {
+    return {
+      A: Number(scores.A ?? scores.a ?? scores.side_a ?? 0),
+      B: Number(scores.B ?? scores.b ?? scores.side_b ?? 0),
+    };
+  }
+  return { A: 0, B: 0 };
+}
 
 export default function App() {
   const [judging, setJudging] = useState(false);
   const [winner, setWinner] = useState<Side | null>(null);
+  const [roundWins, setRoundWins] = useState<Record<Side, number>>({ A: 0, B: 0 });
+  const [stats, setStats] = useState<{ total: number; finished: number }>({ total: 0, finished: 0 });
+  const [topic, setTopic] = useState<string>("");
 
   const pool = useMemo(
     () => FIGHTERS.A.stake + FIGHTERS.B.stake,
     []
   );
 
-  function judge() {
+  // Load arena stats from the contract on mount
+  useEffect(() => {
+    read("stats")
+      .then((s: any) =>
+        setStats({ total: Number(s?.total_debates ?? 0), finished: Number(s?.finished ?? 0) }),
+      )
+      .catch(() => {});
+  }, []);
+
+  async function judge() {
     if (judging || winner) return;
     setJudging(true);
-    toast.loading("AI judge is reviewing the transcript…", { id: "judge" });
-    setTimeout(() => {
-      const win: Side = ROUND_WINS.A >= ROUND_WINS.B ? "A" : "B";
-      setWinner(win);
+    const tId = toast.loading("Summoning the AI judge on-chain… (30–60s)", { id: "judge" });
+    try {
+      const s: any = await read("stats");
+      const total = Number(s?.total_debates ?? 0);
+      const finished = Number(s?.finished ?? 0);
+      setStats({ total, finished });
+      if (total <= 0) {
+        toast("No live debate to judge yet.", {
+          id: tId,
+          description: `${total} debates · ${finished} finished on-chain`,
+        });
+        setJudging(false);
+        return;
+      }
+      const key = "0";
+      await write("judge_debate", [key]);
+      const deb: any = await read("get_debate", [key]);
+      if (deb?.topic) setTopic(String(deb.topic));
+      const rw = parseScores(deb?.scores);
+      setRoundWins(rw);
+      const win = toSide(deb?.winner, deb);
+      if (win) {
+        setWinner(win);
+        toast.success(`${FIGHTERS[win].name} wins the pool · ${pool.toFixed(2)} ETH`, { id: tId });
+      } else {
+        toast("Verdict recorded on-chain.", {
+          id: tId,
+          description: deb?.winner != null && String(deb.winner) ? `winner: ${String(deb.winner)}` : "no decisive winner",
+        });
+      }
+    } catch (e: any) {
+      toast.error("Debate not ready", { id: tId, description: String(e?.message ?? e) });
+    } finally {
       setJudging(false);
-      toast.success(
-        `${FIGHTERS[win].name} wins the pool · ${pool.toFixed(2)} ETH`,
-        { id: "judge" }
-      );
-    }, 3000);
+    }
   }
 
   function reset() {
@@ -81,25 +150,48 @@ export default function App() {
       </div>
 
       <div className="relative mx-auto max-w-5xl px-5 py-8">
+        {/* Navbar */}
+        <nav className="mb-6 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur">
+          <div className="flex items-center gap-2.5">
+            <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" rx="9" fill="url(#dg)" />
+              <path d="M10 11l-4 5 4 5M22 11l4 5-4 5" stroke="#0C0A14" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <defs><linearGradient id="dg" x1="0" y1="0" x2="32" y2="32"><stop stopColor="#F43F5E" /><stop offset="1" stopColor="#38BDF8" /></linearGradient></defs>
+            </svg>
+            <span className="text-[15px] font-black tracking-tight">DebateArena</span>
+          </div>
+          <div className="hidden items-center gap-1 md:flex">
+            {['🔥 Live', 'Crypto', 'Politics', 'Sports', 'Tech', 'Philosophy'].map((c, i) => (
+              <button key={c} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${i === 0 ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => toast('Connect a wallet to stake', { description: 'Pick a corner and back your argument.' })}
+            className="rounded-lg bg-gradient-to-r from-rose-500 to-sky-400 px-4 py-2 text-xs font-bold text-[#0C0A14] transition active:scale-95">
+            Start a Debate
+          </button>
+        </nav>
+
         {/* Scoreboard */}
         <header className="mb-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            DebateArena · Pool {pool.toFixed(2)} ETH
+            {topic ? topic : "Crypto Debate"} · Pool {pool.toFixed(2)} ETH
           </p>
           <div className="mt-3 flex items-center justify-center gap-6">
             <span className="text-4xl font-black" style={{ color: RED }}>
-              {ROUND_WINS.A}
+              {roundWins.A}
             </span>
             <div className="flex flex-col items-center">
               <span className="rounded-md bg-white/5 px-3 py-1 text-xs font-bold uppercase tracking-widest text-slate-300 ring-1 ring-white/10">
                 Round Wins
               </span>
               <span className="mt-1 font-mono text-[10px] text-slate-600">
-                3 rounds · final
+                {stats.total} debates · {stats.finished} finished
               </span>
             </div>
             <span className="text-4xl font-black" style={{ color: BLUE }}>
-              {ROUND_WINS.B}
+              {roundWins.B}
             </span>
           </div>
         </header>
@@ -180,6 +272,26 @@ export default function App() {
                 Reset Match
               </button>
             )}
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section className="mt-10">
+          <h2 className="mb-5 text-center text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">How the Arena Works</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            {[
+              { n: '01', t: 'Pick a Corner', d: 'Two debaters stake ETH on opposite sides of a question.' },
+              { n: '02', t: 'Argue in Rounds', d: 'Each side makes its case across up to 3 timed rounds.' },
+              { n: '03', t: 'AI Judges', d: 'Validators score each round on logic, evidence & rebuttal.' },
+              { n: '04', t: 'Winner Takes Pool', d: 'The side that wins the most rounds claims the staked ETH.' },
+            ].map((s) => (
+              <motion.div key={s.n} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                <span className="bg-gradient-to-r from-rose-400 to-sky-300 bg-clip-text text-2xl font-black text-transparent">{s.n}</span>
+                <h3 className="mt-1 text-sm font-bold">{s.t}</h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-slate-400">{s.d}</p>
+              </motion.div>
+            ))}
           </div>
         </section>
 
