@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster, toast } from "sonner";
-import { read, write, CONTRACT } from "./genlayer";
+import { read, write, CONTRACT, connectWallet, isWalletConnected } from "./genlayer";
 
 const RED = "#F43F5E";
 const BLUE = "#38BDF8";
@@ -73,6 +73,23 @@ export default function App() {
   const [roundWins, setRoundWins] = useState<Record<Side, number>>({ A: 0, B: 0 });
   const [stats, setStats] = useState<{ total: number; finished: number }>({ total: 0, finished: 0 });
   const [topic, setTopic] = useState<string>("");
+  const [wallet, setWallet] = useState<string | null>(null);
+
+  const shortAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+
+  async function handleConnect() {
+    try {
+      const addr = await connectWallet();
+      setWallet(addr);
+      toast.success(
+        `Wallet ${isWalletConnected() ? "connected" : "linked"} · ${shortAddr(addr)}`,
+      );
+    } catch (e: any) {
+      toast.error("Wallet connection failed", {
+        description: String(e?.message ?? e),
+      });
+    }
+  }
 
   const pool = useMemo(
     () => FIGHTERS.A.stake + FIGHTERS.B.stake,
@@ -167,10 +184,16 @@ export default function App() {
               </button>
             ))}
           </div>
-          <button onClick={() => toast('Connect a wallet to stake', { description: 'Pick a corner and back your argument.' })}
-            className="rounded-lg bg-gradient-to-r from-rose-500 to-sky-400 px-4 py-2 text-xs font-bold text-[#0C0A14] transition active:scale-95">
-            Start a Debate
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => toast('Connect a wallet to stake', { description: 'Pick a corner and back your argument.' })}
+              className="rounded-lg bg-gradient-to-r from-rose-500 to-sky-400 px-4 py-2 text-xs font-bold text-[#0C0A14] transition active:scale-95">
+              Start a Debate
+            </button>
+            <button onClick={handleConnect}
+              className="rounded-lg border border-white/15 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/5 active:scale-95">
+              {wallet ? `◉ ${shortAddr(wallet)}` : "Connect Wallet"}
+            </button>
+          </div>
         </nav>
 
         {/* Scoreboard */}
