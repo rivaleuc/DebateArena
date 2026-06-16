@@ -4,8 +4,8 @@
 
 DebateArena runs structured head-to-head debates on a topic. Two participants join opposing sides, exchange arguments over up to three rounds, and then GenLayer validators judge the full transcript round-by-round and pick a winner by consensus. A companion EVM `StakePool` contract holds both debaters' stakes and pays the winner once the GenLayer verdict is readable — splitting the *judgment* (subjective, on GenLayer) from the *settlement* (deterministic, on the EVM).
 
-- **Contract (Bradbury, chain 4221):** `0xB334B44C0C636b9259E10b07132638d7D1a92d7c`
-- **Explorer:** https://explorer-bradbury.genlayer.com/contract/0xB334B44C0C636b9259E10b07132638d7D1a92d7c
+- **Contract (Bradbury, chain 4221):** `0xfB56073Ce7C811Baf9Aa84F6927114b4CE5CAb99`
+- **Explorer:** https://explorer-bradbury.genlayer.com/contract/0xfB56073Ce7C811Baf9Aa84F6927114b4CE5CAb99
 - **Live app:** https://debatearena-cyan.vercel.app
 
 ## What it does

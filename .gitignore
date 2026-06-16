@@ -3,3 +3,5 @@ dist/
 chain/artifacts/
 chain/cache/
 .env
+.venv/
+__pycache__/

@@ -147,22 +147,65 @@ Reply ONLY valid JSON:
 No markdown."""
 
             raw = gl.nondet.exec_prompt(prompt, response_format="json")
-            if isinstance(raw, dict):
-                return json.dumps(raw)
-            return str(raw).strip()
+            data = raw if isinstance(raw, dict) else json.loads(str(raw).strip())
+
+            # Normalize per-round winners to the 'a'/'b' enum; invalid defaults to 'a'.
+            raw_scores = data.get("round_scores")
+            if not isinstance(raw_scores, list):
+                raw_scores = []
+            norm_scores = []
+            count_a = 0
+            for i, rs in enumerate(raw_scores):
+                rd = rs if isinstance(rs, dict) else {}
+                w = str(rd.get("winner", "")).strip().lower()
+                if w not in ("a", "b"):
+                    w = "a"
+                try:
+                    rnd = int(rd.get("round", i + 1))
+                except Exception:
+                    rnd = i + 1
+                norm_scores.append({"round": rnd, "winner": w, "reason": str(rd.get("reason", "")).strip()})
+                if w == "a":
+                    count_a += 1
+            # Guarantee at least one scored round so the anchor is well-defined.
+            if not norm_scores:
+                norm_scores = [{"round": 1, "winner": "a", "reason": "no rounds scored"}]
+                count_a = 1
+            count_b = len(norm_scores) - count_a
+            # Deterministic anchor: overall winner is the majority of per-round winners; tie -> 'a'.
+            winner = "a" if count_a >= count_b else "b"
+            return json.dumps({"winner": winner, "round_scores": norm_scores, "summary": str(data.get("summary", "")).strip()})
 
         def validator_fn(leader_result) -> bool:
             if not isinstance(leader_result, gl.vm.Return):
                 return False
             try:
                 data = json.loads(leader_result.calldata)
-                if data.get("winner") not in ("a", "b"):
-                    return False
-                if not isinstance(data.get("round_scores"), list):
-                    return False
-                return True
             except Exception:
                 return False
+            winner = data.get("winner")
+            # enum check on overall winner
+            if winner not in ("a", "b"):
+                return False
+            round_scores = data.get("round_scores")
+            if not isinstance(round_scores, list) or len(round_scores) < 1:
+                return False
+            count_a = 0
+            for rs in round_scores:
+                if not isinstance(rs, dict):
+                    return False
+                w = rs.get("winner")
+                # enum check on each per-round winner
+                if w not in ("a", "b"):
+                    return False
+                if w == "a":
+                    count_a += 1
+            count_b = len(round_scores) - count_a
+            # cross-field invariant: overall winner == recomputed majority (tie -> 'a')
+            computed = "a" if count_a >= count_b else "b"
+            if winner != computed:
+                return False
+            return True
 
         result_str = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
         return json.loads(result_str)

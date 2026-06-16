@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Toaster, toast } from "sonner";
 import { read, write, CONTRACT, connectWallet, isWalletConnected } from "./genlayer";
@@ -12,13 +12,12 @@ type Fighter = {
   side: Side;
   name: string;
   handle: string;
-  stake: number; // ETH
   color: string;
 };
 
 const FIGHTERS: Record<Side, Fighter> = {
-  A: { side: "A", name: "Crimson", handle: "0xRedCorner", stake: 1.5, color: RED },
-  B: { side: "B", name: "Glacier", handle: "0xBlueCorner", stake: 1.5, color: BLUE },
+  A: { side: "A", name: "Crimson", handle: "0xRedCorner", color: RED },
+  B: { side: "B", name: "Glacier", handle: "0xBlueCorner", color: BLUE },
 };
 
 type Turn = { round: number; side: Side; text: string };
@@ -91,11 +90,6 @@ export default function App() {
     }
   }
 
-  const pool = useMemo(
-    () => FIGHTERS.A.stake + FIGHTERS.B.stake,
-    []
-  );
-
   // Load arena stats from the contract on mount
   useEffect(() => {
     read("stats")
@@ -131,7 +125,7 @@ export default function App() {
       const win = toSide(deb?.winner, deb);
       if (win) {
         setWinner(win);
-        toast.success(`${FIGHTERS[win].name} wins the pool · ${pool.toFixed(2)} ETH`, { id: tId });
+        toast.success(`${FIGHTERS[win].name} wins on round majority`, { id: tId });
       } else {
         toast("Verdict recorded on-chain.", {
           id: tId,
@@ -177,18 +171,7 @@ export default function App() {
             </svg>
             <span className="text-[15px] font-black tracking-tight">DebateArena</span>
           </div>
-          <div className="hidden items-center gap-1 md:flex">
-            {['🔥 Live', 'Crypto', 'Politics', 'Sports', 'Tech', 'Philosophy'].map((c, i) => (
-              <button key={c} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${i === 0 ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                {c}
-              </button>
-            ))}
-          </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => toast('Connect a wallet to stake', { description: 'Pick a corner and back your argument.' })}
-              className="rounded-lg bg-gradient-to-r from-rose-500 to-sky-400 px-4 py-2 text-xs font-bold text-[#0C0A14] transition active:scale-95">
-              Start a Debate
-            </button>
             <button onClick={handleConnect}
               className="rounded-lg border border-white/15 px-4 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/5 active:scale-95">
               {wallet ? `◉ ${shortAddr(wallet)}` : "Connect Wallet"}
@@ -199,7 +182,7 @@ export default function App() {
         {/* Scoreboard */}
         <header className="mb-6 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            {topic ? topic : "Crypto Debate"} · Pool {pool.toFixed(2)} ETH
+            {topic ? topic : "Crypto Debate"}
           </p>
           <div className="mt-3 flex items-center justify-center gap-6">
             <span className="text-4xl font-black" style={{ color: RED }}>
@@ -303,10 +286,10 @@ export default function App() {
           <h2 className="mb-5 text-center text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">How the Arena Works</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             {[
-              { n: '01', t: 'Pick a Corner', d: 'Two debaters stake ETH on opposite sides of a question.' },
-              { n: '02', t: 'Argue in Rounds', d: 'Each side makes its case across up to 3 timed rounds.' },
+              { n: '01', t: 'Open a Debate', d: 'A topic is posted on-chain and two sides (A and B) join.' },
+              { n: '02', t: 'Argue in Rounds', d: 'Each side makes its case across up to 3 rounds.' },
               { n: '03', t: 'AI Judges', d: 'Validators score each round on logic, evidence & rebuttal.' },
-              { n: '04', t: 'Winner Takes Pool', d: 'The side that wins the most rounds claims the staked ETH.' },
+              { n: '04', t: 'Majority Wins', d: 'The side that wins the most rounds is recorded as the winner.' },
             ].map((s) => (
               <motion.div key={s.n} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
                 className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
@@ -365,13 +348,13 @@ export default function App() {
                 {FIGHTERS[winner].name} Wins
               </h2>
               <p className="mt-1 text-sm text-slate-400">
-                @{FIGHTERS[winner].handle} takes the pool
+                @{FIGHTERS[winner].handle} · won the round majority
               </p>
               <p
-                className="mt-4 text-3xl font-extrabold"
+                className="mt-4 text-base font-semibold"
                 style={{ color: FIGHTERS[winner].color }}
               >
-                {pool.toFixed(2)} ETH
+                Rounds {roundWins.A} – {roundWins.B}
               </p>
               <button
                 onClick={reset}
@@ -440,10 +423,10 @@ function Corner({
         }
       >
         <span className="text-[10px] uppercase tracking-wider text-slate-500">
-          Staked
+          Corner
         </span>
         <span className="font-bold" style={{ color: fighter.color }}>
-          {fighter.stake.toFixed(2)} ETH
+          {fighter.side}
         </span>
       </div>
       <p
